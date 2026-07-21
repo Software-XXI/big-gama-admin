@@ -2,7 +2,6 @@
 
 import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -88,12 +87,6 @@ function LoginForm() {
               'Iniciar sesión'
             )}
           </Button>
-          <p className="text-sm text-muted-foreground">
-            ¿Eres conductor?{' '}
-            <Link href="/register" className="text-primary hover:underline font-medium">
-              Regístrate aquí
-            </Link>
-          </p>
         </CardFooter>
       </form>
     </Card>

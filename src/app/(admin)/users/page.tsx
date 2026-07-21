@@ -20,8 +20,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
-import { CheckCircle2, XCircle, ExternalLink } from 'lucide-react';
+import { CheckCircle2, XCircle, ExternalLink, Plus, Loader2 } from 'lucide-react';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
@@ -55,6 +65,12 @@ export default function AdminUsersPage() {
   const [loading, setLoading] = useState(true);
   const [roleFilter, setRoleFilter] = useState('');
   const [activeFilter, setActiveFilter] = useState('');
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createName, setCreateName] = useState('');
+  const [createEmail, setCreateEmail] = useState('');
+  const [createPassword, setCreatePassword] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState('');
 
   function loadUsers() {
     setLoading(true);
@@ -81,9 +97,84 @@ export default function AdminUsersPage() {
     }
   }
 
+  async function handleCreate(e: React.FormEvent) {
+    e.preventDefault();
+    setCreateError('');
+    setCreating(true);
+
+    try {
+      const token = getToken();
+      const res = await fetch(`${API_URL}/api/users`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          name: createName,
+          email: createEmail,
+          password: createPassword,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Error al crear conductor');
+      }
+
+      setCreateOpen(false);
+      setCreateName('');
+      setCreateEmail('');
+      setCreatePassword('');
+      loadUsers();
+    } catch (e) {
+      setCreateError(e instanceof Error ? e.message : 'Error al crear conductor');
+    } finally {
+      setCreating(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Usuarios</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Usuarios</h1>
+        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+          <DialogTrigger>
+            <Button>
+              <Plus className="h-4 w-4 mr-2" />
+              Crear conductor
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Crear conductor</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleCreate} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="createName">Nombre</Label>
+                <Input id="createName" value={createName} onChange={(e) => setCreateName(e.target.value)} placeholder="Nombre del conductor" required />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="createEmail">Email</Label>
+                <Input id="createEmail" type="email" value={createEmail} onChange={(e) => setCreateEmail(e.target.value)} placeholder="correo@ejemplo.com" required />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="createPassword">Contraseña</Label>
+                <Input id="createPassword" type="password" value={createPassword} onChange={(e) => setCreatePassword(e.target.value)} placeholder="Mínimo 6 caracteres" required minLength={6} />
+              </div>
+              {createError && (
+                <p className="text-sm text-destructive">{createError}</p>
+              )}
+              <DialogFooter>
+                <Button type="submit" disabled={creating}>
+                  {creating && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  {creating ? 'Creando...' : 'Crear conductor'}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      </div>
 
       <Card>
         <CardHeader className="pb-3">

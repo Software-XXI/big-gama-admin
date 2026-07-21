@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-const PUBLIC_ROUTES = ['/login', '/register'];
+const PUBLIC_ROUTES = ['/login'];
 const ADMIN_ROUTES = ['/dashboard', '/trips', '/users', '/alerts', '/analytics'];
 const DRIVER_ROUTES = ['/driver/dashboard', '/driver/trips'];
 

@@ -50,7 +50,7 @@ export default function NewTripPage() {
         throw new Error(data.error || 'Error al registrar viaje');
       }
 
-      setResult(data.trip);
+      setResult({ ...data.trip, sheetWritten: data.sheetWritten });
       setSuccess(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al registrar viaje');
@@ -66,7 +66,9 @@ export default function NewTripPage() {
           <CheckCircle2 className="h-16 w-16 text-green-500 mx-auto mb-3" />
           <h2 className="text-xl font-bold">Viaje registrado</h2>
           <p className="text-sm text-muted-foreground">
-            Los datos se han guardado y enviado a tu hoja de cálculo
+            {result.sheetWritten === false
+              ? 'El viaje se registró pero no se pudo guardar en la hoja de cálculo. Contacta al administrador.'
+              : 'Los datos se han guardado y enviado a tu hoja de cálculo'}
           </p>
         </div>
 

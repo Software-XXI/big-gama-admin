@@ -198,17 +198,12 @@ export async function POST(request: NextRequest) {
       tipoServicio,
     ];
 
-    writeToSheet(trip._id.toString(), user._id.toString(), sheetRow).then(
-      (success) => {
-        if (!success) {
-          console.warn(`Sheet write failed for trip ${trip._id} (user: ${user._id}, brand: ${brand})`);
-        }
-      }
-    );
+    const sheetWritten = await writeToSheet(trip._id.toString(), user._id.toString(), sheetRow);
 
     return NextResponse.json(
       {
         message: 'Viaje registrado exitosamente',
+        sheetWritten,
         trip: {
           _id: trip._id,
           origin: trip.origin,

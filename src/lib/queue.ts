@@ -1,5 +1,5 @@
 import { connectDB } from "./mongodb";
-import { appendTripRow } from "./google-sheets";
+import { appendTripRow, getDefaultSheet, ensureDriverTab } from "./google-sheets";
 import { User } from "./models/user";
 import { Trip } from "./models/trip";
 
@@ -22,13 +22,32 @@ export async function writeToSheet(
   while (attempts < MAX_RETRIES) {
     try {
       await connectDB();
-      const user = await User.findById(userId).select("spreadsheetId sheetTab");
-      if (!user?.spreadsheetId) {
-        console.error(`writeToSheet: user ${userId} has no spreadsheetId linked`);
+      const user = await User.findById(userId).select("spreadsheetId sheetTab name");
+      let spreadsheetId = user?.spreadsheetId;
+      let sheetTab = user?.sheetTab || "Viajes";
+
+      if (!spreadsheetId) {
+        const defaultSheet = getDefaultSheet();
+        if (defaultSheet) {
+          const tabName = await ensureDriverTab(defaultSheet.spreadsheetId, user?.name || "Conductor");
+          if (tabName) {
+            await User.findByIdAndUpdate(userId, {
+              spreadsheetId: defaultSheet.spreadsheetId,
+              spreadsheetUrl: defaultSheet.spreadsheetUrl,
+              sheetTab: tabName,
+            });
+            spreadsheetId = defaultSheet.spreadsheetId;
+            sheetTab = tabName;
+          }
+        }
+      }
+
+      if (!spreadsheetId) {
+        console.error(`writeToSheet: user ${userId} has no spreadsheetId linked and no default sheet available`);
         return false;
       }
 
-      const rowNumber = await appendTripRow(user.spreadsheetId, user.sheetTab || "Viajes", row);
+      const rowNumber = await appendTripRow(spreadsheetId, sheetTab, row);
       if (rowNumber) {
         await Trip.findByIdAndUpdate(tripId, { spreadsheetRow: rowNumber });
         return true;

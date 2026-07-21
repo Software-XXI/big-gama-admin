@@ -44,24 +44,22 @@ export async function appendTripRow(
   }
 
   try {
-    const res = await sheets.spreadsheets.values.append({
+    const existing = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: `'${sheetTab}'!A:J`,
+      range: `'${sheetTab}'!A:A`,
+    });
+
+    const rowCount = existing.data.values?.length ?? 0;
+    const targetRow = rowCount + 1;
+
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: `'${sheetTab}'!A${targetRow}:J${targetRow}`,
       valueInputOption: "USER_ENTERED",
       requestBody: { values: [row] },
     });
 
-    const updatedRange = res.data.updates?.updatedRange;
-    if (updatedRange) {
-      const match = updatedRange.match(/(\d+)/);
-      if (match) return parseInt(match[1], 10);
-    }
-    console.error("appendTripRow: no updatedRange in response", {
-      spreadsheetId,
-      updatedRange,
-      data: res.data,
-    });
-    return null;
+    return targetRow;
   } catch (err) {
     console.error("appendTripRow: Google Sheets API error:", {
       spreadsheetId,

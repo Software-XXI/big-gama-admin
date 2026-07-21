@@ -1,7 +1,7 @@
 'use client';
 
 import { Suspense, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,7 +15,6 @@ function LoginForm() {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const { login } = useAuth();
-  const router = useRouter();
   const searchParams = useSearchParams();
 
   async function handleSubmit(e: React.FormEvent) {
@@ -29,7 +28,7 @@ function LoginForm() {
         const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
         const defaultRoute = storedUser.role === 'ADMIN' ? '/dashboard' : '/driver/dashboard';
         const redirect = searchParams.get('redirect') || defaultRoute;
-        router.push(redirect);
+        window.location.href = redirect;
       } else {
         setError('Credenciales inválidas o cuenta no activada');
       }

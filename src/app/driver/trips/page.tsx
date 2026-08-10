@@ -1,10 +1,12 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
-import { Route, MapPin, AlertTriangle, Search } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Route, MapPin, AlertTriangle, Search, Pencil, Trash2, Loader2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
@@ -15,11 +17,14 @@ function getToken() {
 }
 
 export default function DriverTripsPage() {
+  const router = useRouter();
   const [trips, setTrips] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [deletingId, setDeletingId] = useState('');
 
-  useEffect(() => {
+  function loadTrips() {
+    setLoading(true);
     const token = getToken();
     fetch(`${API_URL}/api/trips?limit=50`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -28,7 +33,35 @@ export default function DriverTripsPage() {
       .then(setTrips)
       .catch(console.error)
       .finally(() => setLoading(false));
+  }
+
+  useEffect(() => {
+    loadTrips();
   }, []);
+
+  async function handleDelete(trip: any) {
+    if (!window.confirm('¿Seguro que quieres eliminar este viaje?')) return;
+    setDeletingId(trip._id);
+    try {
+      const token = getToken();
+      const res = await fetch(`${API_URL}/api/trips/${trip._id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Error al eliminar');
+      }
+      setTrips((prev: any) => ({
+        ...prev,
+        data: prev.data.filter((t: any) => t._id !== trip._id),
+      }));
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Error al eliminar viaje');
+    } finally {
+      setDeletingId('');
+    }
+  }
 
   const filtered = trips?.data?.filter((t: any) => {
     if (!search) return true;
@@ -86,6 +119,28 @@ export default function DriverTripsPage() {
                   <span>{trip.travelTimeMin} min</span>
                   <span>·</span>
                   <span>{new Date(trip.createdAt).toLocaleDateString()}</span>
+                </div>
+                <div className="flex justify-end gap-2 mt-3">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => router.push(`/driver/trips/${trip._id}/edit`)}
+                  >
+                    <Pencil className="h-3.5 w-3.5 mr-1.5" /> Editar
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={() => handleDelete(trip)}
+                    disabled={deletingId === trip._id}
+                  >
+                    {deletingId === trip._id ? (
+                      <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+                    )}
+                    Eliminar
+                  </Button>
                 </div>
               </CardContent>
             </Card>

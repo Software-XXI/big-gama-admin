@@ -12,6 +12,43 @@ export interface QueuedSheetWrite {
 
 const MAX_RETRIES = 3;
 
+interface SheetTarget {
+  spreadsheetId: string;
+  sheetTab: string;
+}
+
+export async function getDriverSheetTarget(user: {
+  _id: unknown;
+  name?: string;
+  spreadsheetId?: string;
+  spreadsheetUrl?: string;
+  sheetTab?: string;
+}): Promise<SheetTarget | null> {
+  let spreadsheetId = user.spreadsheetId;
+  let spreadsheetUrl = user.spreadsheetUrl;
+  let sheetTab = user.sheetTab;
+
+  if (!spreadsheetId) {
+    const defaultSheet = getDefaultSheet();
+    if (!defaultSheet) return null;
+    spreadsheetId = defaultSheet.spreadsheetId;
+    spreadsheetUrl = defaultSheet.spreadsheetUrl;
+  }
+
+  if (!sheetTab) {
+    const tabName = await ensureDriverTab(spreadsheetId, user.name || "Conductor");
+    if (!tabName) return null;
+    sheetTab = tabName;
+    await User.findByIdAndUpdate(user._id, {
+      spreadsheetId,
+      spreadsheetUrl,
+      sheetTab,
+    });
+  }
+
+  return { spreadsheetId, sheetTab };
+}
+
 export async function writeToSheet(
   tripId: string,
   userId: string,
@@ -22,34 +59,22 @@ export async function writeToSheet(
   while (attempts < MAX_RETRIES) {
     try {
       await connectDB();
-      const user = await User.findById(userId).select("spreadsheetId sheetTab name");
-      let spreadsheetId = user?.spreadsheetId;
-      let sheetTab = user?.sheetTab || "Viajes";
+      const user = await User.findById(userId).select("spreadsheetId spreadsheetUrl sheetTab name");
 
-      if (!spreadsheetId) {
-        const defaultSheet = getDefaultSheet();
-        if (defaultSheet) {
-          const tabName = await ensureDriverTab(defaultSheet.spreadsheetId, user?.name || "Conductor");
-          if (tabName) {
-            await User.findByIdAndUpdate(userId, {
-              spreadsheetId: defaultSheet.spreadsheetId,
-              spreadsheetUrl: defaultSheet.spreadsheetUrl,
-              sheetTab: tabName,
-            });
-            spreadsheetId = defaultSheet.spreadsheetId;
-            sheetTab = tabName;
-          }
-        }
-      }
-
-      if (!spreadsheetId) {
+      const target = await getDriverSheetTarget(
+        user?.toObject() || { _id: userId }
+      );
+      if (!target) {
         console.error(`writeToSheet: user ${userId} has no spreadsheetId linked and no default sheet available`);
         return false;
       }
 
-      const rowNumber = await appendTripRow(spreadsheetId, sheetTab, row);
+      const rowNumber = await appendTripRow(target.spreadsheetId, target.sheetTab, row);
       if (rowNumber) {
-        await Trip.findByIdAndUpdate(tripId, { spreadsheetRow: rowNumber });
+        await Trip.findByIdAndUpdate(tripId, {
+          spreadsheetRow: rowNumber,
+          spreadsheetTab: target.sheetTab,
+        });
         return true;
       }
 

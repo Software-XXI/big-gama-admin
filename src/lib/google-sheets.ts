@@ -1,4 +1,5 @@
 import { google } from "googleapis";
+import { calculateTripPrice } from "./pricing";
 
 interface SheetAuth {
   clientEmail: string;
@@ -54,7 +55,7 @@ export async function appendTripRow(
 
     await sheets.spreadsheets.values.update({
       spreadsheetId,
-      range: `'${sheetTab}'!A${targetRow}:J${targetRow}`,
+      range: `'${sheetTab}'!A${targetRow}:K${targetRow}`,
       valueInputOption: "USER_ENTERED",
       requestBody: { values: [row] },
     });
@@ -73,7 +74,106 @@ export async function appendTripRow(
 const HEADERS = [
   "Fecha", "Origen", "Destino", "Marca", "Kilómetros",
   "Tiempo (min)", "Estado", "Quien Solicita", "Número OP", "Tipo de servicio",
+  "Total (COP)",
 ];
+
+export function buildSheetRow(trip: {
+  createdAt: Date;
+  origin: string;
+  destination: string;
+  brand: string;
+  distanceKm: number;
+  travelTimeMin: number;
+  flagged: boolean;
+  quienSolicita?: string;
+  numeroOP?: string;
+  tipoServicio: string;
+}): (string | number)[] {
+  return [
+    trip.createdAt.toISOString().split('T')[0],
+    trip.origin,
+    trip.destination,
+    trip.brand,
+    trip.distanceKm,
+    trip.travelTimeMin,
+    trip.flagged ? 'ALERTA' : 'OK',
+    trip.quienSolicita || '',
+    trip.numeroOP || '',
+    trip.tipoServicio,
+    calculateTripPrice(trip.distanceKm, trip.travelTimeMin),
+  ];
+}
+
+export async function updateTripRow(
+  spreadsheetId: string,
+  sheetTab: string,
+  rowNumber: number,
+  row: (string | number)[],
+): Promise<boolean> {
+  const sheets = await getSheetsClient();
+  if (!sheets) return false;
+  try {
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: `'${sheetTab}'!A${rowNumber}:K${rowNumber}`,
+      valueInputOption: "USER_ENTERED",
+      requestBody: { values: [row] },
+    });
+    return true;
+  } catch (err) {
+    console.error("updateTripRow: Google Sheets API error:", {
+      spreadsheetId,
+      rowNumber,
+      error: err instanceof Error ? err.message : err,
+    });
+    return false;
+  }
+}
+
+export async function deleteSpreadsheetRow(
+  spreadsheetId: string,
+  sheetTab: string,
+  rowNumber: number,
+): Promise<boolean> {
+  const sheets = await getSheetsClient();
+  if (!sheets) return false;
+  try {
+    const metadata = await sheets.spreadsheets.get({
+      spreadsheetId,
+      fields: "sheets.properties",
+    });
+    const sheet = metadata.data.sheets?.find(
+      (s) => s.properties?.title?.toLowerCase() === sheetTab.toLowerCase()
+    );
+    if (!sheet?.properties?.sheetId) return false;
+
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId,
+      requestBody: {
+        requests: [
+          {
+            deleteDimension: {
+              range: {
+                sheetId: sheet.properties.sheetId,
+                dimension: "ROWS",
+                startIndex: rowNumber - 1,
+                endIndex: rowNumber,
+              },
+            },
+          },
+        ],
+      },
+    });
+    return true;
+  } catch (err) {
+    console.error("deleteSpreadsheetRow: Google Sheets API error:", {
+      spreadsheetId,
+      rowNumber,
+      error: err instanceof Error ? err.message : err,
+    });
+    return false;
+  }
+}
 
 function sanitizeTabName(name: string): string {
   return name.replace(/[\[\]:\*\?\/\\]/g, '').slice(0, 100);
@@ -104,7 +204,7 @@ export async function ensureDriverTab(spreadsheetId: string, driverName: string)
     });
     await sheets.spreadsheets.values.update({
       spreadsheetId,
-      range: `'${tabName}'!A1:J1`,
+      range: `'${tabName}'!A1:K1`,
       valueInputOption: "USER_ENTERED",
       requestBody: { values: [HEADERS] },
     });
@@ -121,7 +221,7 @@ export async function initSheetHeaders(spreadsheetId: string): Promise<boolean> 
   try {
     await sheets.spreadsheets.values.update({
       spreadsheetId,
-      range: "A1:J1",
+      range: "A1:K1",
       valueInputOption: "USER_ENTERED",
       requestBody: { values: [HEADERS] },
     });

@@ -159,9 +159,13 @@ export default function AdminLayout({
           />
         )}
 
-        <main className="flex-1 p-4 md:p-6 lg:p-8 overflow-auto">
+        <main className="flex-1 p-4 md:p-6 lg:p-8 overflow-auto pb-16">
           {children}
         </main>
+
+        <footer className="fixed bottom-2 left-3 z-40 text-xs text-green-600 font-medium">
+          Creado por Software XXI
+        </footer>
       </div>
     </div>
   );

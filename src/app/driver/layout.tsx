@@ -83,6 +83,10 @@ export default function DriverLayout({
           })}
         </div>
       </nav>
+
+      <footer className="fixed bottom-2 left-3 z-40 text-xs text-green-600 font-medium">
+        Creado por Software XXI
+      </footer>
     </div>
   );
 }

@@ -3,13 +3,9 @@ import { connectDB } from '@/lib/mongodb';
 import { Trip } from '@/lib/models/trip';
 import { User } from '@/lib/models/user';
 import { requireRole } from '@/lib/middleware-helpers';
-import { calculateRoute } from '@/lib/google-maps';
-import { RouteCache } from '@/lib/models/route-cache';
-import { getCurrentTimeBucket, normalize } from '@/lib/time-bucket';
+import { getOrCalculateRoute, evaluateFlags } from '@/lib/route-calc';
+import { buildSheetRow } from '@/lib/google-sheets';
 import { writeToSheet } from '@/lib/queue';
-
-const MAX_KM = parseInt(process.env.ALERT_MAX_KM || '1000', 10);
-const MAX_MIN = parseInt(process.env.ALERT_MAX_HOURS || '12', 10) * 60;
 
 export async function GET(request: NextRequest) {
   const result = await requireRole(request, ['ADMIN', 'CONDUCTOR']);
@@ -64,56 +60,12 @@ export async function GET(request: NextRequest) {
   });
 }
 
-async function getOrCalculateRoute(
-  origin: string,
-  destination: string
-): Promise<{ distanceKm: number; travelTimeMin: number }> {
-  const bucket = getCurrentTimeBucket();
-  const originNorm = normalize(origin);
-  const destNorm = normalize(destination);
-
-  const existing = await RouteCache.findOne({
-    originNorm,
-    destinationNorm: destNorm,
-    dayType: bucket.dayType,
-    hourBucket: bucket.hourBucket,
-  });
-
-  if (existing) {
-    existing.hits += 1;
-    await existing.save();
-    return {
-      distanceKm: existing.distanceKm,
-      travelTimeMin: existing.travelTimeMin,
-    };
-  }
-
-  const route = await calculateRoute(origin, destination, true);
-
-  await RouteCache.create({
-    originNorm,
-    destinationNorm: destNorm,
-    dayType: bucket.dayType,
-    hourBucket: bucket.hourBucket,
-    distanceKm: route.distanceKm,
-    travelTimeMin: route.travelTimeMin,
-    originAddress: route.originAddress,
-    destinationAddress: route.destinationAddress,
-    hits: 1,
-  });
-
-  return {
-    distanceKm: route.distanceKm,
-    travelTimeMin: route.travelTimeMin,
-  };
-}
-
 export async function POST(request: NextRequest) {
-  const auth = await requireRole(request, ['CONDUCTOR']);
+  const auth = await requireRole(request, ['ADMIN', 'CONDUCTOR']);
   if (auth.error) return auth.error;
 
   try {
-    const { origin, destination, brand, tipoServicio, quienSolicita = '', numeroOP = '' } = await request.json();
+    const { origin, destination, brand, tipoServicio, quienSolicita = '', numeroOP = '', userId } = await request.json();
 
     if (!origin || !destination || !brand || !tipoServicio) {
       return NextResponse.json(
@@ -131,7 +83,18 @@ export async function POST(request: NextRequest) {
 
     await connectDB();
 
-    const user = await User.findById(auth.user!.sub);
+    let tripUserId = auth.user!.sub;
+    if (auth.user!.role === 'ADMIN') {
+      if (!userId) {
+        return NextResponse.json(
+          { error: 'Debes seleccionar un conductor' },
+          { status: 400 }
+        );
+      }
+      tripUserId = userId;
+    }
+
+    const user = await User.findById(tripUserId);
     if (!user) {
       return NextResponse.json(
         { error: 'Usuario no encontrado' },
@@ -154,20 +117,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const flagged =
-      route.distanceKm > MAX_KM || route.travelTimeMin > MAX_MIN;
-    let flagReason: string | undefined;
-
-    if (flagged) {
-      const reasons: string[] = [];
-      if (route.distanceKm > MAX_KM)
-        reasons.push(`Kilómetros excesivos (${route.distanceKm} km)`);
-      if (route.travelTimeMin > MAX_MIN)
-        reasons.push(
-          `Tiempo excesivo (${Math.round(route.travelTimeMin / 60)} horas)`
-        );
-      flagReason = reasons.join('. ');
-    }
+    const { flagged, flagReason } = evaluateFlags(
+      route.distanceKm,
+      route.travelTimeMin
+    );
 
     const trip = await Trip.create({
       origin,
@@ -185,18 +138,18 @@ export async function POST(request: NextRequest) {
       numeroOP,
     });
 
-    const sheetRow: (string | number)[] = [
-      trip.createdAt.toISOString().split('T')[0],
+    const sheetRow = buildSheetRow({
+      createdAt: trip.createdAt,
       origin,
       destination,
       brand,
-      route.distanceKm,
-      route.travelTimeMin,
-      flagged ? 'ALERTA' : 'OK',
+      distanceKm: route.distanceKm,
+      travelTimeMin: route.travelTimeMin,
+      flagged,
       quienSolicita,
       numeroOP,
       tipoServicio,
-    ];
+    });
 
     const sheetWritten = await writeToSheet(trip._id.toString(), user._id.toString(), sheetRow);
 

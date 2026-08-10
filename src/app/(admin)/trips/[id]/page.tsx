@@ -8,7 +8,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ArrowLeft, AlertTriangle, Save } from 'lucide-react';
+import { ArrowLeft, AlertTriangle, Save, Trash2, Loader2 } from 'lucide-react';
+import { calculateTripPrice } from '@/lib/pricing';
+
+function formatPrice(price: number) {
+  return `${Math.round(price / 1000)}k`;
+}
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
@@ -86,6 +91,28 @@ export default function TripDetailPage() {
     }
   }
 
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleDelete() {
+    if (!window.confirm('¿Seguro que quieres eliminar este viaje?')) return;
+    setDeleting(true);
+    try {
+      const token = getToken();
+      const res = await fetch(`${API_URL}/api/trips/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Error al eliminar');
+      }
+      router.push('/trips');
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Error al eliminar viaje');
+      setDeleting(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="space-y-4">
@@ -103,13 +130,21 @@ export default function TripDetailPage() {
 
   if (!trip) return null;
 
-  const fields = [
+  type Field = { label: string; value: string; key?: string; green?: boolean };
+  const fields: Field[] = [
     { label: 'Conductor', value: trip.driverName },
     { label: 'Origen', value: trip.origin, key: 'origin' },
     { label: 'Destino', value: trip.destination, key: 'destination' },
     { label: 'Marca', value: trip.brand, key: 'brand' },
     { label: 'Distancia', value: `${trip.distanceKm} km`, key: 'distanceKm' },
     { label: 'Tiempo', value: `${trip.travelTimeMin} min`, key: 'travelTimeMin' },
+    {
+      label: 'Total',
+      value: formatPrice(
+        calculateTripPrice(trip.distanceKm, trip.travelTimeMin)
+      ),
+      green: true,
+    },
     {
       label: 'Creado',
       value: new Date(trip.createdAt).toLocaleString(),
@@ -136,21 +171,36 @@ export default function TripDetailPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Información del viaje</CardTitle>
-            <Button
-              variant={editing ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => (editing ? handleSave() : setEditing(true))}
-              disabled={saving}
-            >
-              {editing ? (
-                <>
-                  <Save className="h-4 w-4 mr-1" />
-                  {saving ? 'Guardando...' : 'Guardar'}
-                </>
-              ) : (
-                'Editar'
-              )}
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleDelete}
+                disabled={saving || deleting}
+              >
+                {deleting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4" />
+                )}
+                <span className="ml-1">Eliminar</span>
+              </Button>
+              <Button
+                variant={editing ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => (editing ? handleSave() : setEditing(true))}
+                disabled={saving || deleting}
+              >
+                {editing ? (
+                  <>
+                    <Save className="h-4 w-4 mr-1" />
+                    {saving ? 'Guardando...' : 'Guardar'}
+                  </>
+                ) : (
+                  'Editar'
+                )}
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
             {fields.map((f) => (
@@ -171,7 +221,7 @@ export default function TripDetailPage() {
                     }
                   />
                 ) : (
-                  <span className="text-sm font-medium">{f.value}</span>
+                  <span className={`text-sm font-medium ${f.green ? 'text-green-600' : ''}`}>{f.value}</span>
                 )}
               </div>
             ))}

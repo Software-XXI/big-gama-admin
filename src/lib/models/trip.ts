@@ -15,6 +15,7 @@ export interface ITripDoc extends Document {
   quienSolicita: string;
   numeroOP: string;
   spreadsheetRow?: number;
+  spreadsheetTab?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -85,6 +86,9 @@ const TripSchema = new Schema<ITripDoc>(
     },
     spreadsheetRow: {
       type: Number,
+    },
+    spreadsheetTab: {
+      type: String,
     },
   },
   { timestamps: true }

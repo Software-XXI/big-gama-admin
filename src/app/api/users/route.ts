@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import { connectDB } from '@/lib/mongodb';
 import { User } from '@/lib/models/user';
 import { requireRole } from '@/lib/middleware-helpers';
+import { getDriverSheetTarget } from '@/lib/queue';
 
 export async function GET(request: NextRequest) {
   const result = await requireRole(request, ['ADMIN']);
@@ -82,9 +83,30 @@ export async function POST(request: NextRequest) {
       isActive: true,
     });
 
+    let sheetTab: string | undefined;
+    try {
+      const target = await getDriverSheetTarget(user.toObject());
+      if (target) {
+        sheetTab = target.sheetTab;
+        await User.findByIdAndUpdate(user._id, {
+          spreadsheetId: target.spreadsheetId,
+          sheetTab: target.sheetTab,
+          spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${target.spreadsheetId}`,
+        });
+      }
+    } catch (sheetErr) {
+      console.error(
+        'Create user: failed to create driver sheet tab:',
+        sheetErr instanceof Error ? sheetErr.message : sheetErr
+      );
+    }
+
     const { password: _, ...userWithoutPassword } = user.toObject();
 
-    return NextResponse.json(userWithoutPassword, { status: 201 });
+    return NextResponse.json(
+      { ...userWithoutPassword, sheetTab },
+      { status: 201 }
+    );
   } catch (error) {
     console.error('Create user error:', error);
     return NextResponse.json(

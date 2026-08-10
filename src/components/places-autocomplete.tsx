@@ -39,7 +39,8 @@ export function PlacesAutocomplete({ id, value, onChange, placeholder, disabled 
       setSuggestions(results);
       setIsOpen(results.length > 0);
       setActiveIndex(-1);
-    } catch {
+    } catch (e) {
+      console.error('fetchAutocompleteSuggestions error:', e);
       setSuggestions([]);
       setIsOpen(false);
     }

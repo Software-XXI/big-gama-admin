@@ -10,6 +10,8 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ArrowLeft, AlertTriangle, Save, Trash2, Loader2 } from 'lucide-react';
 import { calculateTripPrice } from '@/lib/pricing';
+import { APIProvider } from '@vis.gl/react-google-maps';
+import { PlacesAutocomplete } from '@/components/places-autocomplete';
 
 function formatPrice(price: number) {
   return `${Math.round(price / 1000)}k`;
@@ -136,8 +138,8 @@ export default function TripDetailPage() {
     { label: 'Origen', value: trip.origin, key: 'origin' },
     { label: 'Destino', value: trip.destination, key: 'destination' },
     { label: 'Marca', value: trip.brand, key: 'brand' },
-    { label: 'Distancia', value: `${trip.distanceKm} km`, key: 'distanceKm' },
-    { label: 'Tiempo', value: `${trip.travelTimeMin} min`, key: 'travelTimeMin' },
+    { label: 'Distancia', value: `${trip.distanceKm} km` },
+    { label: 'Tiempo', value: `${trip.travelTimeMin} min` },
     {
       label: 'Total',
       value: formatPrice(
@@ -168,7 +170,8 @@ export default function TripDetailPage() {
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
-        <Card>
+        <APIProvider apiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY!}>
+          <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Información del viaje</CardTitle>
             <div className="flex gap-2">
@@ -206,19 +209,27 @@ export default function TripDetailPage() {
             {fields.map((f) => (
               <div key={f.label} className="flex justify-between items-center">
                 <span className="text-sm text-muted-foreground">{f.label}</span>
-                {editing && f.key ? (
+                {editing && f.key === 'origin' ? (
+                  <PlacesAutocomplete
+                    id="edit-origin"
+                    value={form.origin}
+                    onChange={(v) => setForm((prev) => ({ ...prev, origin: v }))}
+                    placeholder="Ciudad o dirección de salida"
+                    disabled={saving}
+                  />
+                ) : editing && f.key === 'destination' ? (
+                  <PlacesAutocomplete
+                    id="edit-destination"
+                    value={form.destination}
+                    onChange={(v) => setForm((prev) => ({ ...prev, destination: v }))}
+                    placeholder="Ciudad o dirección de llegada"
+                    disabled={saving}
+                  />
+                ) : editing && f.key ? (
                   <Input
                     className="w-48 h-8 text-sm text-right"
                     value={String((form as any)[f.key] ?? '')}
-                    onChange={(e) =>
-                      setForm((prev) => ({
-                        ...prev,
-                        [f.key!]:
-                          f.key === 'distanceKm' || f.key === 'travelTimeMin'
-                            ? Number(e.target.value)
-                            : e.target.value,
-                      }))
-                    }
+                    onChange={(e) => setForm((prev) => ({ ...prev, [f.key!]: e.target.value }))}
                   />
                 ) : (
                   <span className={`text-sm font-medium ${f.green ? 'text-green-600' : ''}`}>{f.value}</span>
@@ -226,7 +237,8 @@ export default function TripDetailPage() {
               </div>
             ))}
           </CardContent>
-        </Card>
+          </Card>
+        </APIProvider>
       </div>
     </div>
   );

@@ -11,9 +11,8 @@ interface User {
 
 interface AuthContextType {
   user: User | null;
-  token: string | null;
   login: (email: string, password: string) => Promise<boolean>;
-  logout: () => void;
+  logout: () => Promise<void>;
   isLoading: boolean;
 }
 
@@ -25,21 +24,44 @@ function getApiUrl() {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const storedToken = localStorage.getItem('token');
-    const storedUser = localStorage.getItem('user');
-    if (storedToken && storedUser) {
-      setToken(storedToken);
-      try {
-        setUser(JSON.parse(storedUser));
-      } catch {
-        console.error('Error parsing stored user');
-      }
-    }
-    setIsLoading(false);
+    let cancelled = false;
+
+    localStorage.removeItem('token');
+
+    fetch(`${getApiUrl()}/api/auth/profile`, { credentials: 'same-origin' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((profile) => {
+        if (cancelled) return;
+        if (profile) {
+          const nextUser: User = {
+            id: profile.id,
+            email: profile.email,
+            name: profile.name,
+            role: profile.role,
+          };
+          setUser(nextUser);
+          localStorage.setItem('user', JSON.stringify(nextUser));
+        } else {
+          setUser(null);
+          localStorage.removeItem('user');
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setUser(null);
+          localStorage.removeItem('user');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const login = useCallback(async (email: string, password: string): Promise<boolean> => {
@@ -47,20 +69,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const apiUrl = getApiUrl();
       const res = await fetch(`${apiUrl}/api/auth/login`, {
         method: 'POST',
+        credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       });
 
       if (!res.ok) {
-        const err = await res.json();
+        const err = await res.json().catch(() => ({}));
         throw new Error(err.error || 'Error al iniciar sesión');
       }
 
       const data = await res.json();
-      localStorage.setItem('token', data.accessToken);
       localStorage.setItem('user', JSON.stringify(data.user));
-      document.cookie = `token=${data.accessToken}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
-      setToken(data.accessToken);
       setUser(data.user);
       return true;
     } catch (error) {
@@ -69,16 +89,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const logout = useCallback(() => {
-    localStorage.removeItem('token');
+  const logout = useCallback(async () => {
+    try {
+      await fetch(`${getApiUrl()}/api/auth/logout`, {
+        method: 'POST',
+        credentials: 'same-origin',
+      });
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
     localStorage.removeItem('user');
-    document.cookie = 'token=; path=/; max-age=0; SameSite=Lax';
-    setToken(null);
     setUser(null);
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, token, login, logout, isLoading }}>
+    <AuthContext.Provider value={{ user, login, logout, isLoading }}>
       {children}
     </AuthContext.Provider>
   );

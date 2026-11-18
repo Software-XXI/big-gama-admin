@@ -6,19 +6,25 @@ import { requireRole } from '@/lib/middleware-helpers';
 import { getOrCalculateRoute, evaluateFlags } from '@/lib/route-calc';
 import { buildSheetRow } from '@/lib/google-sheets';
 import { writeToSheet } from '@/lib/queue';
+import { formatZodError, tripCreateSchema, tripQuerySchema } from '@/lib/validation';
 
 export async function GET(request: NextRequest) {
   const result = await requireRole(request, ['ADMIN', 'CONDUCTOR']);
   if (result.error) return result.error;
 
   const { searchParams } = new URL(request.url);
-  const page = parseInt(searchParams.get('page') || '1', 10);
-  const limit = parseInt(searchParams.get('limit') || '20', 10);
-  const brand = searchParams.get('brand');
-  const userId = searchParams.get('userId');
-  const startDate = searchParams.get('startDate');
-  const endDate = searchParams.get('endDate');
-  const flagged = searchParams.get('flagged');
+  const parsed = tripQuerySchema.safeParse(
+    Object.fromEntries(searchParams.entries())
+  );
+
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: formatZodError(parsed.error) },
+      { status: 400 }
+    );
+  }
+
+  const { page, limit, brand, userId, startDate, endDate, flagged } = parsed.data;
 
   await connectDB();
 
@@ -36,8 +42,8 @@ export async function GET(request: NextRequest) {
 
   if (startDate || endDate) {
     const dateFilter: Record<string, Date> = {};
-    if (startDate) dateFilter.$gte = new Date(startDate);
-    if (endDate) dateFilter.$lte = new Date(endDate);
+    if (startDate) dateFilter.$gte = startDate;
+    if (endDate) dateFilter.$lte = endDate;
     filter.createdAt = dateFilter;
   }
 
@@ -65,21 +71,25 @@ export async function POST(request: NextRequest) {
   if (auth.error) return auth.error;
 
   try {
-    const { origin, destination, brand, tipoServicio, quienSolicita = '', numeroOP = '', userId } = await request.json();
+    const body = await request.json().catch(() => null);
+    const parsed = tripCreateSchema.safeParse(body);
 
-    if (!origin || !destination || !brand || !tipoServicio) {
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: 'Origen, destino, marca y tipo de servicio son requeridos' },
+        { error: formatZodError(parsed.error) },
         { status: 400 }
       );
     }
 
-    if (!['Entrega', 'Recogida'].includes(tipoServicio)) {
-      return NextResponse.json(
-        { error: 'Tipo de servicio debe ser Entrega o Recogida' },
-        { status: 400 }
-      );
-    }
+    const {
+      origin,
+      destination,
+      brand,
+      tipoServicio,
+      quienSolicita,
+      numeroOP,
+      userId,
+    } = parsed.data;
 
     await connectDB();
 

@@ -48,8 +48,8 @@ export default function DriverLayout({
           <div className="flex items-center gap-2">
             <span className="text-sm text-muted-foreground">{user.name}</span>
             <button
-              onClick={() => {
-                logout();
+              onClick={async () => {
+                await logout();
                 router.push('/login');
               }}
               className="p-1.5 rounded-lg text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"

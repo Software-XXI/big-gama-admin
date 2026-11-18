@@ -9,10 +9,34 @@ export interface TokenUser {
   role: string;
 }
 
+const TOKEN_COOKIE = 'token';
+
+function parseCookies(header: string | null): Record<string, string> {
+  if (!header) return {};
+  const result: Record<string, string> = {};
+  for (const part of header.split(';')) {
+    const index = part.indexOf('=');
+    if (index === -1) continue;
+    const key = part.slice(0, index).trim();
+    const value = part.slice(index + 1).trim();
+    if (key) result[key] = decodeURIComponent(value);
+  }
+  return result;
+}
+
 export function getTokenFromRequest(request: Request): string | null {
+  const cookieToken = parseCookies(request.headers.get('cookie'))[TOKEN_COOKIE];
+  if (cookieToken) return cookieToken;
+
   const authHeader = request.headers.get('authorization');
-  if (!authHeader?.startsWith('Bearer ')) return null;
-  return authHeader.slice(7);
+  if (authHeader?.startsWith('Bearer ')) {
+    const bearer = authHeader.slice(7).trim();
+    if (bearer && bearer !== 'null' && bearer !== 'undefined') {
+      return bearer;
+    }
+  }
+
+  return null;
 }
 
 export async function authenticateRequest(request: Request): Promise<
@@ -32,7 +56,30 @@ export async function authenticateRequest(request: Request): Promise<
 
   try {
     const decoded = verifyToken(token);
-    return { user: decoded, error: null };
+
+    await connectDB();
+    const user = await User.findById(decoded.sub)
+      .select('email role isActive')
+      .lean();
+
+    if (!user || !user.isActive) {
+      return {
+        user: null,
+        error: NextResponse.json(
+          { error: 'Cuenta inactiva o inexistente' },
+          { status: 401 }
+        ),
+      };
+    }
+
+    return {
+      user: {
+        sub: user._id.toString(),
+        email: user.email,
+        role: user.role,
+      },
+      error: null,
+    };
   } catch {
     return {
       user: null,

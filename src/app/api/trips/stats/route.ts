@@ -2,16 +2,25 @@ import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '@/lib/mongodb';
 import { Trip } from '@/lib/models/trip';
 import { requireRole } from '@/lib/middleware-helpers';
+import { formatZodError, statsQuerySchema } from '@/lib/validation';
 
 export async function GET(request: NextRequest) {
   const result = await requireRole(request, ['ADMIN']);
   if (result.error) return result.error;
 
   const { searchParams } = new URL(request.url);
-  const startDate = searchParams.get('startDate');
-  const endDate = searchParams.get('endDate');
-  const brand = searchParams.get('brand');
-  const userId = searchParams.get('userId');
+  const parsed = statsQuerySchema.safeParse(
+    Object.fromEntries(searchParams.entries())
+  );
+
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: formatZodError(parsed.error) },
+      { status: 400 }
+    );
+  }
+
+  const { startDate, endDate, brand, userId } = parsed.data;
 
   await connectDB();
 
@@ -22,8 +31,8 @@ export async function GET(request: NextRequest) {
 
   if (startDate || endDate) {
     const dateFilter: Record<string, Date> = {};
-    if (startDate) dateFilter.$gte = new Date(startDate);
-    if (endDate) dateFilter.$lte = new Date(endDate);
+    if (startDate) dateFilter.$gte = startDate;
+    if (endDate) dateFilter.$lte = endDate;
     filter.createdAt = dateFilter;
   }
 

@@ -3,45 +3,67 @@ import { connectDB } from './src/lib/mongodb';
 import { User } from './src/lib/models/user';
 import { hashPassword } from './src/lib/auth';
 
-async function seed() {
-  await connectDB();
-  console.log('📦 Connected to MongoDB');
+function requireEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`Variable de entorno requerida para el seed: ${name}`);
+  }
+  return value;
+}
 
-  const adminExists = await User.findOne({ email: 'admin@biggama.com' });
+function validatePassword(name: string, value: string) {
+  if (value.length < 8) {
+    throw new Error(`${name} debe tener al menos 8 caracteres`);
+  }
+}
+
+async function seed() {
+  const adminEmail = requireEnv('SEED_ADMIN_EMAIL').toLowerCase();
+  const adminPassword = requireEnv('SEED_ADMIN_PASSWORD');
+  const adminName = process.env.SEED_ADMIN_NAME || 'Administrador';
+  const driverEmail = requireEnv('SEED_DRIVER_EMAIL').toLowerCase();
+  const driverPassword = requireEnv('SEED_DRIVER_PASSWORD');
+  const driverName = process.env.SEED_DRIVER_NAME || 'Conductor';
+
+  validatePassword('SEED_ADMIN_PASSWORD', adminPassword);
+  validatePassword('SEED_DRIVER_PASSWORD', driverPassword);
+
+  await connectDB();
+  console.log('Connected to MongoDB');
+
+  const adminExists = await User.findOne({ email: adminEmail });
   if (!adminExists) {
-    const hashed = await hashPassword('Admin123456');
     await User.create({
-      email: 'admin@biggama.com',
-      password: hashed,
-      name: 'Administrador',
+      email: adminEmail,
+      password: await hashPassword(adminPassword),
+      name: adminName,
       role: 'ADMIN',
       isActive: true,
     });
-    console.log('✅ Admin created: admin@biggama.com / Admin123456');
+    console.log(`Admin creado: ${adminEmail}`);
   } else {
-    console.log('ℹ️ Admin already exists');
+    console.log('El admin ya existe');
   }
 
-  const driverExists = await User.findOne({ email: 'conductor@biggamma.com' });
+  const driverExists = await User.findOne({ email: driverEmail });
   if (!driverExists) {
-    const hashed = await hashPassword('Conductor123');
     await User.create({
-      email: 'conductor@biggamma.com',
-      password: hashed,
-      name: 'Juan Pérez',
+      email: driverEmail,
+      password: await hashPassword(driverPassword),
+      name: driverName,
       role: 'CONDUCTOR',
       isActive: true,
     });
-    console.log('✅ Driver created: conductor@biggamma.com / Conductor123');
+    console.log(`Conductor creado: ${driverEmail}`);
   } else {
-    console.log('ℹ️ Driver already exists');
+    console.log('El conductor ya existe');
   }
 
-  console.log('🎉 Seed complete');
+  console.log('Seed completo');
   process.exit(0);
 }
 
 seed().catch((err) => {
-  console.error('Seed error:', err);
+  console.error('Seed error:', err instanceof Error ? err.message : err);
   process.exit(1);
 });

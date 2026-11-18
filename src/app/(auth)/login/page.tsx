@@ -9,6 +9,17 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Label } from '@/components/ui/label';
 import { Loader2 } from 'lucide-react';
 
+function safeRedirect(value: string | null, fallback: string) {
+  if (!value) return fallback;
+  try {
+    const url = new URL(value, window.location.origin);
+    if (url.origin !== window.location.origin) return fallback;
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return fallback;
+  }
+}
+
 function LoginForm() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -27,7 +38,7 @@ function LoginForm() {
       if (success) {
         const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
         const defaultRoute = storedUser.role === 'ADMIN' ? '/dashboard' : '/driver/dashboard';
-        const redirect = searchParams.get('redirect') || defaultRoute;
+        const redirect = safeRedirect(searchParams.get('redirect'), defaultRoute);
         window.location.href = redirect;
       } else {
         setError('Credenciales inválidas o cuenta no activada');

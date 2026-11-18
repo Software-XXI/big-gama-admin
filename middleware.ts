@@ -1,48 +1,70 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { jwtVerify } from 'jose';
 
 const PUBLIC_ROUTES = ['/login'];
 const ADMIN_ROUTES = ['/dashboard', '/trips', '/users', '/alerts', '/analytics'];
 const DRIVER_ROUTES = ['/driver/dashboard', '/driver/trips'];
+const TOKEN_COOKIE = 'token';
 
-export function middleware(request: NextRequest) {
+function getSecret(): Uint8Array | null {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) return null;
+  return new TextEncoder().encode(secret);
+}
+
+function loginRedirect(request: NextRequest, pathname: string) {
+  const loginUrl = new URL('/login', request.url);
+  loginUrl.searchParams.set('redirect', pathname);
+  const response = NextResponse.redirect(loginUrl);
+  response.cookies.delete(TOKEN_COOKIE);
+  return response;
+}
+
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  if (PUBLIC_ROUTES.includes(pathname) || pathname.startsWith('/api/') || pathname.startsWith('/_next/')) {
+  if (
+    PUBLIC_ROUTES.includes(pathname) ||
+    pathname.startsWith('/api/') ||
+    pathname.startsWith('/_next/')
+  ) {
     return NextResponse.next();
   }
 
-  const token = request.cookies.get('token')?.value;
+  const token = request.cookies.get(TOKEN_COOKIE)?.value;
 
   if (!token) {
-    const loginUrl = new URL('/login', request.url);
-    loginUrl.searchParams.set('redirect', pathname);
-    return NextResponse.redirect(loginUrl);
+    return loginRedirect(request, pathname);
   }
 
+  const secret = getSecret();
+  if (!secret) {
+    console.error('middleware: JWT_SECRET no está configurado');
+    return loginRedirect(request, pathname);
+  }
+
+  let role: string;
   try {
-    const payload = JSON.parse(
-      Buffer.from(token.split('.')[1], 'base64').toString()
-    );
-
-    const role = payload.role as string;
-
-    if (ADMIN_ROUTES.some((r) => pathname.startsWith(r)) && role !== 'ADMIN') {
-      if (pathname.startsWith('/driver')) {
-        return NextResponse.next();
-      }
-      return NextResponse.redirect(new URL('/driver/dashboard', request.url));
-    }
-
-    if (DRIVER_ROUTES.some((r) => pathname.startsWith(r)) && role !== 'CONDUCTOR') {
-      return NextResponse.redirect(new URL('/dashboard', request.url));
-    }
-
-    return NextResponse.next();
+    const { payload } = await jwtVerify(token, secret, {
+      algorithms: ['HS256'],
+      issuer: 'big-gama-admin',
+      audience: 'big-gama-admin-web',
+    });
+    role = typeof payload.role === 'string' ? payload.role : '';
   } catch {
-    const loginUrl = new URL('/login', request.url);
-    return NextResponse.redirect(loginUrl);
+    return loginRedirect(request, pathname);
   }
+
+  if (ADMIN_ROUTES.some((r) => pathname.startsWith(r)) && role !== 'ADMIN') {
+    return NextResponse.redirect(new URL('/driver/dashboard', request.url));
+  }
+
+  if (DRIVER_ROUTES.some((r) => pathname.startsWith(r)) && role !== 'CONDUCTOR') {
+    return NextResponse.redirect(new URL('/dashboard', request.url));
+  }
+
+  return NextResponse.next();
 }
 
 export const config = {

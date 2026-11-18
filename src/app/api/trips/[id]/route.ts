@@ -9,6 +9,7 @@ import {
   updateTripRow,
   deleteSpreadsheetRow,
 } from '@/lib/google-sheets';
+import { formatZodError, tripUpdateSchema } from '@/lib/validation';
 
 const CONDUCTOR_FIELDS = ['origin', 'destination', 'brand', 'tipoServicio'];
 const ADMIN_FIELDS = [
@@ -60,7 +61,17 @@ export async function PATCH(
 
   try {
     const { id } = await params;
-    const body = await request.json();
+    const body = await request.json().catch(() => null);
+    const parsed = tripUpdateSchema.safeParse(body);
+
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: formatZodError(parsed.error) },
+        { status: 400 }
+      );
+    }
+
+    const data = parsed.data;
 
     await connectDB();
 
@@ -84,19 +95,20 @@ export async function PATCH(
     const updateData: Record<string, unknown> = {};
 
     for (const field of allowed) {
-      if (body[field] !== undefined) {
-        updateData[field] = body[field];
+      const value = data[field as keyof typeof data];
+      if (value !== undefined) {
+        updateData[field] = value;
       }
     }
 
-    const originChanged = body.origin !== undefined && body.origin !== existing.origin;
+    const originChanged = data.origin !== undefined && data.origin !== existing.origin;
     const destinationChanged =
-      body.destination !== undefined && body.destination !== existing.destination;
+      data.destination !== undefined && data.destination !== existing.destination;
 
-    if ((originChanged || destinationChanged) && body.origin && body.destination) {
+    if ((originChanged || destinationChanged) && data.origin && data.destination) {
       let route;
       try {
-        route = await getOrCalculateRoute(body.origin, body.destination);
+        route = await getOrCalculateRoute(data.origin, data.destination);
       } catch (mapError) {
         return NextResponse.json(
           {
@@ -125,7 +137,10 @@ export async function PATCH(
       );
     }
 
-    const trip = await Trip.findByIdAndUpdate(id, updateData, { new: true })
+    const trip = await Trip.findByIdAndUpdate(id, updateData, {
+      new: true,
+      runValidators: true,
+    })
       .select('-__v')
       .lean();
 

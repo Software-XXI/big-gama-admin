@@ -77,6 +77,12 @@ const HEADERS = [
   "Total (COP)",
 ];
 
+const FORMULA_PREFIX = /^[=+\-@\t\r]/;
+
+function escapeSheetCell(value: string): string {
+  return FORMULA_PREFIX.test(value) ? `'${value}` : value;
+}
+
 export function buildSheetRow(trip: {
   createdAt: Date;
   origin: string;
@@ -91,15 +97,15 @@ export function buildSheetRow(trip: {
 }): (string | number)[] {
   return [
     trip.createdAt.toISOString().split('T')[0],
-    trip.origin,
-    trip.destination,
-    trip.brand,
+    escapeSheetCell(trip.origin),
+    escapeSheetCell(trip.destination),
+    escapeSheetCell(trip.brand),
     trip.distanceKm,
     trip.travelTimeMin,
     trip.flagged ? 'ALERTA' : 'OK',
-    trip.quienSolicita || '',
-    trip.numeroOP || '',
-    trip.tipoServicio,
+    escapeSheetCell(trip.quienSolicita || ''),
+    escapeSheetCell(trip.numeroOP || ''),
+    escapeSheetCell(trip.tipoServicio),
     calculateTripPrice(trip.distanceKm, trip.travelTimeMin),
   ];
 }
@@ -176,7 +182,13 @@ export async function deleteSpreadsheetRow(
 }
 
 function sanitizeTabName(name: string): string {
-  return name.replace(/[\[\]:\*\?\/\\]/g, '').slice(0, 100);
+  const cleaned = name
+    .replace(/[\[\]:*?/\\']/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 100)
+    .trim();
+  return cleaned || 'Conductor';
 }
 
 export async function ensureDriverTab(spreadsheetId: string, driverName: string): Promise<string | null> {

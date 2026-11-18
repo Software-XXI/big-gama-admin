@@ -2,20 +2,24 @@ import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/mongodb";
 import { User } from "@/lib/models/user";
 import { requireRole } from "@/lib/middleware-helpers";
+import { formatZodError, sheetLinkSchema } from "@/lib/validation";
 
 export async function POST(request: NextRequest) {
   const result = await requireRole(request, ["ADMIN"]);
   if (result.error) return result.error;
 
   try {
-    const { userId, spreadsheetId, spreadsheetUrl } = await request.json();
+    const body = await request.json().catch(() => null);
+    const parsed = sheetLinkSchema.safeParse(body);
 
-    if (!userId || !spreadsheetId) {
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: "userId y spreadsheetId son requeridos" },
+        { error: formatZodError(parsed.error) },
         { status: 400 },
       );
     }
+
+    const { userId, spreadsheetId, spreadsheetUrl } = parsed.data;
 
     await connectDB();
 

@@ -4,16 +4,25 @@ import { connectDB } from '@/lib/mongodb';
 import { User } from '@/lib/models/user';
 import { requireRole } from '@/lib/middleware-helpers';
 import { getDriverSheetTarget } from '@/lib/queue';
+import { formatZodError, userCreateSchema, userQuerySchema } from '@/lib/validation';
 
 export async function GET(request: NextRequest) {
   const result = await requireRole(request, ['ADMIN']);
   if (result.error) return result.error;
 
   const { searchParams } = new URL(request.url);
-  const page = parseInt(searchParams.get('page') || '1', 10);
-  const limit = parseInt(searchParams.get('limit') || '20', 10);
-  const isActive = searchParams.get('isActive');
-  const role = searchParams.get('role');
+  const parsed = userQuerySchema.safeParse(
+    Object.fromEntries(searchParams.entries())
+  );
+
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: formatZodError(parsed.error) },
+      { status: 400 }
+    );
+  }
+
+  const { page, limit, isActive, role } = parsed.data;
 
   await connectDB();
 
@@ -47,21 +56,17 @@ export async function POST(request: NextRequest) {
   if (result.error) return result.error;
 
   try {
-    const { name, email, password } = await request.json();
+    const body = await request.json().catch(() => null);
+    const parsed = userCreateSchema.safeParse(body);
 
-    if (!name || !email || !password) {
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: 'Nombre, email y contraseña son requeridos' },
+        { error: formatZodError(parsed.error) },
         { status: 400 }
       );
     }
 
-    if (password.length < 6) {
-      return NextResponse.json(
-        { error: 'La contraseña debe tener al menos 6 caracteres' },
-        { status: 400 }
-      );
-    }
+    const { name, email, password } = parsed.data;
 
     await connectDB();
 
@@ -101,7 +106,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { password: _, ...userWithoutPassword } = user.toObject();
+    const userWithoutPassword = user.toObject() as unknown as Record<string, unknown>;
+    delete userWithoutPassword.password;
 
     return NextResponse.json(
       { ...userWithoutPassword, sheetTab },

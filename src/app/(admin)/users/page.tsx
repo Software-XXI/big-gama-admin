@@ -162,7 +162,7 @@ export default function AdminUsersPage() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="createPassword">Contraseña</Label>
-                <Input id="createPassword" type="password" value={createPassword} onChange={(e) => setCreatePassword(e.target.value)} placeholder="Mínimo 6 caracteres" required minLength={6} />
+                <Input id="createPassword" type="password" value={createPassword} onChange={(e) => setCreatePassword(e.target.value)} placeholder="Mínimo 8 caracteres" required minLength={8} />
               </div>
               {createError && (
                 <p className="text-sm text-destructive">{createError}</p>
